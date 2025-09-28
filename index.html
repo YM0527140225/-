@@ -1,81 +1,125 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html dir="rtl" lang="he">
 <head>
-  <meta charset="UTF-8">
-  <title>התחברות</title>
+  <meta charset="utf-8">
+  <title>התחברות עם Google</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#f6f7fb; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-    #box { background:#fff; padding:30px; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.1); text-align:center; width:360px; }
-    h2 { margin-bottom:12px; }
-    .muted { color:#666; font-size:14px; margin-top:8px; }
-    .error { color:#d9534f; font-weight:bold; margin-top:10px; }
-    .spinner { margin:20px auto; border:4px solid #eee; border-top:4px solid #1f4aff; border-radius:50%; width:36px; height:36px; animation: spin 1s linear infinite; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f6f7fb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #box {
+      background: #fff;
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.1);
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 15px;
+      color: #444;
+    }
+    .hidden { display: none; }
+
+    /* אנימציית טעינה */
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4285F4;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
+    }
     @keyframes spin { 100% { transform: rotate(360deg); } }
-    .success { font-size:32px; color:green; margin:10px 0; }
   </style>
+
+  <!-- ספריית Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div id="box">
     <h2>כניסה עם Google</h2>
-    <div id="g_id_onload"
-         data-client_id="354707783533-6qbh1t1ag75gu34ouc7n5o8i0bp5ec13.apps.googleusercontent.com"
-         data-callback="handleCredentialResponse"
-         data-auto_prompt="false">
+    <div id="step1">
+      <div id="g_id_onload"
+           data-client_id="YOUR_CLIENT_ID.apps.googleusercontent.com"
+           data-callback="handleCredentialResponse"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin" data-type="standard" data-size="large"></div>
+      <div id="status">בחר/י חשבון Google כדי להמשיך</div>
     </div>
-    <div class="g_id_signin" data-type="standard"></div>
-    <div id="msg" class="muted">אנא התחבר/י עם חשבון Google</div>
-    <div id="error" class="error"></div>
+
+    <div id="step2" class="hidden">
+      <h3>ברוך הבא</h3>
+      <p id="welcomeMsg"></p>
+      <div class="loader"></div>
+      <div id="status">אנחנו מעבירים אותך לדף המבוקש...</div>
+    </div>
+
+    <div id="stepErr" class="hidden">
+      <h3 style="color:#d9534f">שגיאה</h3>
+      <p>לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.</p>
+    </div>
   </div>
 
   <script>
-    function handleCredentialResponse(resp) {
-      const token = resp && resp.credential;
-      if (!token) {
-        showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
+    // מחלץ את redirect מה-URL
+    function getRedirectUrl() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get("redirect") || "https://example.com";
+    }
+
+    // קריאה חוזרת אחרי התחברות
+    function handleCredentialResponse(response) {
+      if (!response || !response.credential) {
+        showError();
         return;
       }
 
-      // בדיקה מול Google
-      fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token))
+      const token = response.credential;
+
+      // מאמתים את ה-id_token מול Google
+      fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + token)
         .then(r => r.json())
-        .then(data => {
-          if (!data || !data.email) {
-            showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
-            return;
+        .then(profile => {
+          if (profile && profile.email) {
+            showSuccess(profile, token);
+          } else {
+            showError();
           }
-          showSuccess(data.email, token);
         })
-        .catch(() => {
-          showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
-        });
+        .catch(() => showError());
     }
 
-    function showError(msg) {
-      document.getElementById("msg").style.display = "none";
-      document.getElementById("error").textContent = msg;
+    function showSuccess(profile, token) {
+      document.getElementById("step1").classList.add("hidden");
+      document.getElementById("step2").classList.remove("hidden");
+      document.getElementById("welcomeMsg").textContent = profile.email;
+
+      const redirectUrl = getRedirectUrl();
+      const email = encodeURIComponent(profile.email);
+      const name  = encodeURIComponent(profile.name || "");
+      const idToken = encodeURIComponent(token);
+
+      // אחרי 2 שניות מפנה חזרה לאתר המקורי
+      setTimeout(() => {
+        window.location.href =
+          `${redirectUrl}?email=${email}&name=${name}&token=${idToken}`;
+      }, 2000);
     }
 
-    function showSuccess(email, token) {
-      const box = document.getElementById("box");
-      box.innerHTML = `
-        <div class="success">✓</div>
-        <h2>ברוך הבא</h2>
-        <div>${email}</div>
-        <div class="spinner"></div>
-        <div class="muted">אנחנו מעבירים אותך לדף המבוקש…</div>
-      `;
-
-      // מציאת return_to
-      const urlParams = new URLSearchParams(window.location.search);
-      const ret = urlParams.get("return_to");
-      if (ret) {
-        setTimeout(() => {
-          // שלח את הנתונים ל-return_to
-          const sep = ret.includes("?") ? "&" : "?";
-          window.location.href = ret + sep + "email=" + encodeURIComponent(email) + "&id_token=" + encodeURIComponent(token);
-        }, 2000);
-      }
+    function showError() {
+      document.getElementById("step1").classList.add("hidden");
+      document.getElementById("stepErr").classList.remove("hidden");
     }
   </script>
 </body>
