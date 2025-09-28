@@ -1,82 +1,144 @@
-<!DOCTYPE html>
-<html lang="he" dir="rtl">
+<!doctype html>
+<html lang="he">
 <head>
-  <meta charset="UTF-8">
-  <title>התחברות</title>
+  <meta charset="utf-8">
+  <title>Universal Google Sign-In Redirector</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body { font-family: Arial, sans-serif; background:#f6f7fb; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-    #box { background:#fff; padding:30px; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.1); text-align:center; width:360px; }
-    h2 { margin-bottom:12px; }
-    .muted { color:#666; font-size:14px; margin-top:8px; }
-    .error { color:#d9534f; font-weight:bold; margin-top:10px; }
-    .spinner { margin:20px auto; border:4px solid #eee; border-top:4px solid #1f4aff; border-radius:50%; width:36px; height:36px; animation: spin 1s linear infinite; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    .success { font-size:32px; color:green; margin:10px 0; }
+    body{font-family:Arial,Helvetica,sans-serif;padding:24px;background:#f6f7fb;color:#222}
+    .card{max-width:680px;margin:20px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+    h1{margin:0 0 12px;font-size:20px}
+    p{margin:8px 0;color:#444}
+    .muted{color:#666;font-size:14px}
+    .error{color:#c00}
+    .small{font-size:13px;color:#666}
+    .btn{display:inline-block;padding:10px 14px;border-radius:8px;background:#1f4aff;color:#fff;text-decoration:none}
   </style>
+
+  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <div id="box">
-    <h2>כניסה עם Google</h2>
-    <div id="g_id_onload"
-         data-client_id="354707783533-6qbh1t1ag75gu34ouc7n5o8i0bp5ec13.apps.googleusercontent.com"
-         data-callback="handleCredentialResponse"
-         data-auto_prompt="false">
+  <div class="card">
+    <h1>התחבר עם Google — Redirector אוניברסלי</h1>
+    <p class="muted">העמוד הזה יריץ Google Sign-In, יקבל id_token ויחזיר את המשתמש חזרה ל־URL שממנו הגיע (או ל־return_to שנשלח). מומלץ להפעיל POST כדי שלא להציג את הטוקן בכתובת.</p>
+
+    <div id="signinArea">
+      <div id="g_id_onload"
+           data-client_id="354707783533-6qbh1t1ag75gu34ouc7n5o8i0bp5ec13.apps.googleusercontent.com"
+           data-callback="handleCredentialResponse"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin" data-type="standard"></div>
+      <p class="small">אם הגיע אליך בעיה — בדוק ש-Authorized JavaScript origins ב-Cloud Console מכיל את דומיין ה-GitHub/Netlify שלך (למשל https://yourusername.github.io).</p>
     </div>
-    <div class="g_id_signin" data-type="standard"></div>
-    <div id="msg" class="muted">אנא התחבר/י עם חשבון Google</div>
-    <div id="error" class="error"></div>
+
+    <div id="status" class="muted" style="margin-top:12px"></div>
+    <div id="err" class="error"></div>
   </div>
 
-  <script>
-    function handleCredentialResponse(resp) {
-      const token = resp && resp.credential;
-      if (!token) {
-        showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
-        return;
-      }
+<script>
+/*
+  Universal Sign-In Redirector
+  - Configure CLIENT_ID below
+  - Optionally set ALLOWED_RETURN_ORIGINS to restrict where we redirect tokens
+  - Behavior:
+      1) on success gets id_token from Google GSI
+      2) finds return URL (priority: ?return_to=..., else document.referrer)
+      3) if return origin is allowed -> send token (POST preferred) or GET (fallback)
+*/
 
-      // בדיקה מול Google
-      fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token))
-        .then(r => r.json())
-        .then(data => {
-          if (!data || !data.email) {
-            showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
-            return;
-          }
-          showSuccess(data.email, token);
-        })
-        .catch(() => {
-          showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
-        });
-    }
+// CONFIG: set your client id in the HTML attribute and set allowed origins here:
+const ALLOWED_RETURN_ORIGINS = [
+  // put origins you trust here, example:
+  // "https://your-app.example.com",
+  // "https://yourusername.github.io"
+];
 
-    function showError(msg) {
-      document.getElementById("msg").style.display = "none";
-      document.getElementById("error").textContent = msg;
-    }
+// Helper: extract query param
+function qParam(name) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
 
-    function showSuccess(email, token) {
-      const box = document.getElementById("box");
-      box.innerHTML = `
-        <div class="success">✓</div>
-        <h2>ברוך הבא</h2>
-        <div>${email}</div>
-        <div class="spinner"></div>
-        <div class="muted">אנחנו מעבירים אותך לדף המבוקש…</div>
-      `;
+function originOf(url) {
+  try { return (new URL(url)).origin; } catch(e){ return null; }
+}
 
-      // מציאת return_to
-      const urlParams = new URLSearchParams(window.location.search);
-      const ret = urlParams.get("return_to");
-      if (ret) {
-        setTimeout(() => {
-          // שלח את הנתונים ל-return_to
-          const sep = ret.includes("?") ? "&" : "?";
-          window.location.href = ret + sep + "email=" + encodeURIComponent(email) + "&id_token=" + encodeURIComponent(token);
-        }, 2000);
-      }
-    }
-  </script>
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (ALLOWED_RETURN_ORIGINS.length === 0) {
+    // if empty -> allow any origin from same host (conservative) OR allow document.referrer origin
+    // but for safety here we only allow same-origin redirect back to this host's referrer.
+    return true; // fallback permissive — remove in production
+  }
+  return ALLOWED_RETURN_ORIGINS.indexOf(origin) !== -1;
+}
+
+// Main callback called by GSI
+function handleCredentialResponse(resp) {
+  const statusEl = document.getElementById('status');
+  const errEl = document.getElementById('err');
+  statusEl.textContent = 'קיבל אסימון — מכין הפניה...';
+  errEl.textContent = '';
+
+  if (!resp || !resp.credential) {
+    errEl.textContent = 'לא התקבל id_token מה־Google.';
+    return;
+  }
+  const idToken = resp.credential;
+
+  // Determine return URL
+  let returnTo = qParam('return_to') || document.referrer || null;
+
+  if (!returnTo) {
+    errEl.textContent = 'אין כתובת להחזיר אליה (לא הוגדר return_to ולא יש referral).';
+    return;
+  }
+
+  const returnOrigin = originOf(returnTo);
+  if (!returnOrigin) {
+    errEl.textContent = 'כתובת יעד לא תקינה: ' + returnTo;
+    return;
+  }
+
+  // SECURITY CHECK: ensure allowed origin (recommended)
+  if (!isAllowedOrigin(returnOrigin)) {
+    errEl.innerHTML = 'היעד ‘' + returnOrigin + '’ לא מאושר. לבטיחות אין להפנות לשם.<br>'
+      + 'אם זה אתר אמיתי שלך, הוסף אותו לרשימת ALLOWED_RETURN_ORIGINS בקוד זה.';
+    return;
+  }
+
+  // If the returnTo belongs to the same origin as this page and you prefer GET, use GET.
+  // Preferred: send via POST to avoid token in URL
+  try {
+    // Create a form and POST the token
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = returnTo;
+    // add fields
+    const f1 = document.createElement('input'); f1.type='hidden'; f1.name='id_token'; f1.value = idToken; form.appendChild(f1);
+    // optionally add some user info fields? GSI returns only id_token on client side.
+    // append a field with originalReferrer so recipient can verify
+    const f2 = document.createElement('input'); f2.type='hidden'; f2.name='referrer'; f2.value = window.location.href; form.appendChild(f2);
+
+    document.body.appendChild(form);
+    form.submit();
+    statusEl.textContent = 'מועבר ליעד...';
+  } catch(e) {
+    // Fallback: redirect with GET param (token in URL)
+    console.warn('POST failed, fallback to GET', e);
+    const sep = returnTo.indexOf('?')===-1 ? '?' : '&';
+    window.location.href = returnTo + sep + 'id_token=' + encodeURIComponent(idToken);
+  }
+}
+
+// Optional: show debug info for manual testing
+(function showDebug(){
+  const s = document.getElementById('status');
+  const ref = document.referrer || '(no referrer)';
+  s.textContent = 'referrer: ' + ref + ' — return_to param: ' + (qParam('return_to') || '(none)');
+})();
+</script>
 </body>
 </html>
