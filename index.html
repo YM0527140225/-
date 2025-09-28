@@ -1,159 +1,82 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html lang="he" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <title>כניסה עם Google — Universal Relay</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <title>התחברות</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
-    #box{background:#fff;border-radius:14px;padding:28px;box-shadow:0 8px 28px rgba(0,0,0,.08);width:96%;max-width:460px;text-align:center}
-    h2{margin:0 0 10px}
-    p.muted{color:#666;margin:6px 0 0}
-    .btn-custom{display:inline-block;padding:14px 22px;border-radius:12px;font-weight:700;background:#28a8ff;color:#fff;border:none;cursor:pointer;margin-top:14px;font-size:16px}
-    .btn-custom:hover{background:#ff78b0;color:#fff} /* הופך לוורוד כשנוגע */
-    .loader{width:38px;height:38px;border:4px solid #eee;border-top:5px solid #28a8ff;border-radius:50%;animation:spin 1s linear infinite;margin:12px auto}
-    @keyframes spin{100%{transform:rotate(360deg)}}
-    .hidden{display:none}
-    .ok { color: #198754; font-weight:700; }
-    .err { color: #d9534f; font-weight:700; }
+    body { font-family: Arial, sans-serif; background:#f6f7fb; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+    #box { background:#fff; padding:30px; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.1); text-align:center; width:360px; }
+    h2 { margin-bottom:12px; }
+    .muted { color:#666; font-size:14px; margin-top:8px; }
+    .error { color:#d9534f; font-weight:bold; margin-top:10px; }
+    .spinner { margin:20px auto; border:4px solid #eee; border-top:4px solid #1f4aff; border-radius:50%; width:36px; height:36px; animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .success { font-size:32px; color:green; margin:10px 0; }
   </style>
-
-  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div id="box">
     <h2>כניסה עם Google</h2>
-
-    <div id="step1">
-      <div id="g_id_onload"
-           data-client_id="354707783533-6qbh1t1ag75gu34ouc7n5o8i0bp5ec13.apps.googleusercontent.com"
-           data-callback="handleCredentialResponse"
-           data-auto_prompt="false">
-      </div>
-      <!-- כפתור גוגל סטנדרטי -->
-      <div class="g_id_signin" data-type="standard" data-size="large"></div>
-
-      <p class="muted">או אם תרצה — השתמש בכפתור שלנו:</p>
-      <button id="fallbackBtn" class="btn-custom">התחבר עם Google</button>
-
-      <p id="status" class="muted">בחר/י חשבון Google כדי להמשיך</p>
+    <div id="g_id_onload"
+         data-client_id="354707783533-6qbh1t1ag75gu34ouc7n5o8i0bp5ec13.apps.googleusercontent.com"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
     </div>
-
-    <div id="step2" class="hidden">
-      <p class="ok">ברוך הבא — אימות הצליח</p>
-      <div id="userEmail" style="font-weight:700"></div>
-      <div class="loader"></div>
-      <p class="muted">מועבר/ת לדף המבוקש…</p>
-    </div>
-
-    <div id="stepErr" class="hidden">
-      <p class="err">לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.</p>
-    </div>
+    <div class="g_id_signin" data-type="standard"></div>
+    <div id="msg" class="muted">אנא התחבר/י עם חשבון Google</div>
+    <div id="error" class="error"></div>
   </div>
 
   <script>
-    // קבלת ה־redirect מה־URL (האתר שמפנה אלינו צריך להעביר ?redirect=...),
-    // אם לא סופק — נשתמש ב־window.opener origin או בברירת מחדל.
-    function getRedirectParam(){
-      const params = new URLSearchParams(window.location.search);
-      const r = params.get('redirect');
-      try { return r ? decodeURIComponent(r) : null; } catch(e){ return r; }
-    }
-
-    // בדוק האם URL תקין ובנה origin שלו לשימוש באימות
-    function originOf(url){
-      try { const u=new URL(url); return u.origin; } catch(e){ return null; }
-    }
-
-    // ניסיון לשלוח ב-postMessage (מתאים אם הפונה הוא popup או iframe)
-    function tryPostMessage(targetWindow, targetOrigin, payload){
-      try {
-        targetWindow.postMessage(payload, targetOrigin || '*');
-        return true;
-      } catch(e){
-        return false;
+    function handleCredentialResponse(resp) {
+      const token = resp && resp.credential;
+      if (!token) {
+        showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
+        return;
       }
-    }
 
-    // hande Google credential response
-    function handleCredentialResponse(response){
-      if(!response || !response.credential){ showError(); return; }
-      const idToken = response.credential;
-
-      // optional: validate token client-side via tokeninfo (shows profile)
-      fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken))
+      // בדיקה מול Google
+      fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token))
         .then(r => r.json())
-        .then(profile => {
-          if(profile && profile.email){
-            deliverResult({ email: profile.email, name: profile.name || '', token: idToken });
-            showSuccess(profile);
-          } else showError();
+        .then(data => {
+          if (!data || !data.email) {
+            showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
+            return;
+          }
+          showSuccess(data.email, token);
         })
-        .catch(()=> showError());
+        .catch(() => {
+          showError("לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.");
+        });
     }
 
-    // deliverResult: נסיונות בסדר עדיף: opener.postMessage -> parent.postMessage -> redirect
-    function deliverResult(data){
-      const redirect = getRedirectParam();
-      const redirectOrigin = redirect ? originOf(redirect) : null;
-
-      // payload to send
-      const payload = { type:'google-auth', email: data.email, name: data.name, token: data.token };
-
-      let delivered = false;
-
-      // 1) אם נפתח כ־popup (window.opener) — נסה לשלוח אליו עם targetOrigin = redirectOrigin אם קיים
-      if(window.opener && !window.opener.closed){
-        delivered = tryPostMessage(window.opener, redirectOrigin || '*', payload);
-      }
-
-      // 2) אם לא — נסה לשלוח ל־parent (אם עומד בתוך iframe)
-      if(!delivered && window.parent && window.parent !== window){
-        delivered = tryPostMessage(window.parent, redirectOrigin || '*', payload);
-      }
-
-      // 3) Fallback — redirect מלא עם פרמטרים (בטוח עובד בכל מקרה)
-      if(!delivered){
-        const sep = (redirect && redirect.indexOf('?') === -1) ? '?' : '&';
-        const target = redirect || window.location.origin + '/';
-        const q = `email=${encodeURIComponent(data.email)}&name=${encodeURIComponent(data.name)}&token=${encodeURIComponent(data.token)}`;
-        // נמנע מפתיחה בחלון חדש — נחליף את ההיסטוריה
-        window.location.replace(target + sep + q);
-      } else {
-        // אם הצלחנו ב-postMessage — נסגור את החלון אחרי השהיה קצרה (ב־popup) או נציג סטטוס
-        setTimeout(()=> {
-          try { window.close(); } catch(e){}
-        }, 900);
-      }
+    function showError(msg) {
+      document.getElementById("msg").style.display = "none";
+      document.getElementById("error").textContent = msg;
     }
 
-    function showSuccess(profile){
-      document.getElementById('step1').classList.add('hidden');
-      document.getElementById('step2').classList.remove('hidden');
-      document.getElementById('userEmail').textContent = profile.email;
-    }
-    function showError(){
-      document.getElementById('step1').classList.add('hidden');
-      document.getElementById('stepErr').classList.remove('hidden');
-    }
+    function showSuccess(email, token) {
+      const box = document.getElementById("box");
+      box.innerHTML = `
+        <div class="success">✓</div>
+        <h2>ברוך הבא</h2>
+        <div>${email}</div>
+        <div class="spinner"></div>
+        <div class="muted">אנחנו מעבירים אותך לדף המבוקש…</div>
+      `;
 
-    // חיבור כפתור fallback (אם רוצים לשלוט ידנית על הכפתור)
-    document.getElementById('fallbackBtn').addEventListener('click', ()=>{
-      // trigger auto button provided by Google Identity (הוא כבר נטען בדיב של g_id_onload)
-      // אם ה־GSI לא זמין — נציג הודעת שגיאה
-      const signin = document.querySelector('.g_id_signin button, .g_id_signin');
-      if (signin){
-        // אם יש כפתור נטו — נחכה ש־GSI ינהל את הלחיצה
-        try { signin.click(); } catch(e){ /* fallback */ }
-      } else {
-        // אין כפתור — נספר כטעות
-        alert('כפתור ההתחברות לא זמין כרגע. נסה שנית מאוחר יותר.');
+      // מציאת return_to
+      const urlParams = new URLSearchParams(window.location.search);
+      const ret = urlParams.get("return_to");
+      if (ret) {
+        setTimeout(() => {
+          // שלח את הנתונים ל-return_to
+          const sep = ret.includes("?") ? "&" : "?";
+          window.location.href = ret + sep + "email=" + encodeURIComponent(email) + "&id_token=" + encodeURIComponent(token);
+        }, 2000);
       }
-    });
-
-    // expose handler globally for GSI
-    window.handleCredentialResponse = handleCredentialResponse;
+    }
   </script>
 </body>
 </html>
