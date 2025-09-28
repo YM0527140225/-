@@ -1,149 +1,100 @@
----
-
-### 📄 README.md (להכניס לגיטהאב)
+### 📄 README.md
 
 ```markdown
-# 🔑 Universal Google Login Redirect
+# Universal Google Login Page (GitHub Pages)
 
-This project provides a simple **Google Sign-In page** that can be hosted on **GitHub Pages**.  
-It allows any website to redirect users here for login, then send them back with their **Google email** and **ID token**.
+דף התחברות אוניברסלי עם Google, מבוסס על **Google Identity Services (GIS)**.  
+ניתן להשתמש בו מכל אתר ע"י הפניה עם פרמטר `redirect`.  
+לאחר התחברות המשתמש, הדף יחזיר אותו חזרה לכתובת שהוגדרה עם פרטי המשתמש.
 
 ---
 
-## 🚀 How it works
+## 🚀 התקנה
 
-1. Any website sends the user to:
+1. העתק את הקובץ [`login.html`](./login.html) לריפוזיטורי שלך.
+2. הפעל **GitHub Pages** בריפוזיטורי (מומלץ `main` → `/root`).
+3. ה־URL של הדף יהיה בסגנון:
 ```
 
-[https://YOUR_USERNAME.github.io/login.html?return_to=https://example.com/after](https://YOUR_USERNAME.github.io/login.html?return_to=https://example.com/after)
-
-```
-2. The user signs in with Google.  
-3. If successful → user sees "Welcome" message with animation.  
-Then automatically redirected to `return_to` with:
-- `email` (Google account email)
-- `id_token` (JWT that can be verified by your server)
-
-Example final redirect:
-```
-
-[https://example.com/after?email=user@gmail.com&id_token=XYZ](https://example.com/after?email=user@gmail.com&id_token=XYZ)
-
-```
-
-4. If login fails → user sees:
-```
-
-לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.
+https://<username>.github.io/<repo>/login.html
 
 ```
 
 ---
 
-## ⚙️ Setup
+## ⚙️ הגדרות Google Cloud
 
-### 1. Create Google OAuth Client
-- Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
-- Create a **OAuth Client ID** for **Web Application**.
-- Under **Authorized JavaScript origins**, add:
+1. עבור ל־[Google Cloud Console](https://console.cloud.google.com/).
+2. צור או בחר **OAuth 2.0 Client ID** מסוג **Web Application**.
+3. הוסף את כתובת GitHub Pages שלך לרשימת **Authorized JavaScript origins**.  
+לדוגמה:
 ```
 
-[https://YOUR_USERNAME.github.io](https://YOUR_USERNAME.github.io)
+https://<username>.github.io
 
 ````
-- Copy your **Client ID**.
-
-### 2. Configure `login.html`
-- Open `login.html`.
-- Replace:
+4. קבל את ה־**Client ID** והחלף את הערך בשורה הזו בתוך `login.html`:
 ```html
 data-client_id="YOUR_CLIENT_ID.apps.googleusercontent.com"
 ````
 
-with your real Client ID.
+---
 
-### 3. Deploy to GitHub Pages
+## 🖥️ שימוש
 
-* Commit `login.html` and `README.md` to your repo.
-* In repo settings → **Pages** → set branch to `main` → `/ (root)` folder.
-* Access page at:
+הפנה את המשתמש לכתובת `login.html` עם פרמטר `redirect` לכתובת אליה תרצה שיחזור:
+
+```
+https://<username>.github.io/<repo>/login.html?redirect=https://yourapp.com/callback
+```
+
+### דוגמה:
+
+```
+https://myname.github.io/google-login/login.html?redirect=https://script.google.com/macros/s/AKfycbx12345/exec
+```
+
+---
+
+## 📤 נתונים שמוחזרים
+
+לאחר התחברות, המשתמש מופנה חזרה לכתובת `redirect` עם פרמטרים:
+
+* `email` — כתובת המייל של המשתמש.
+* `name` — שם מלא (אם זמין).
+* `token` — ה־ID Token שהתקבל מגוגל.
+
+### דוגמה:
+
+```
+https://yourapp.com/callback?email=user%40gmail.com&name=John%20Doe&token=eyJhbGciOiJSUzI1NiIsImtpZCI6IjY...
+```
+
+---
+
+## ❌ טיפול בשגיאות
+
+* אם ההתחברות נכשלה, המשתמש יראה הודעה:
 
   ```
-  https://YOUR_USERNAME.github.io/login.html
+  לא הצלחנו לחבר אותך, אנא נסה שוב / התחבר עם חשבון אחר.
   ```
+* במקרה כזה הוא יישאר בדף ההתחברות (`login.html`).
 
 ---
 
-## 📄 Example usage
+## 🎨 ממשק
 
-### From your website:
+* בעת התחברות מוצלחת:
 
-```html
-<a href="https://YOUR_USERNAME.github.io/login.html?return_to=https://mysite.com/auth-done">
-  Login with Google
-</a>
-```
-
-### On your site (receiver):
-
-The `auth-done` page receives `email` and `id_token`:
-
-```js
-const params = new URLSearchParams(window.location.search);
-const email = params.get("email");
-const idToken = params.get("id_token");
-
-console.log("User email:", email);
-console.log("Google ID Token:", idToken);
-
-// (Optional) Verify token on your backend:
-fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken))
-  .then(r => r.json())
-  .then(data => console.log("Verified payload:", data));
-```
+  * מוצגת הודעת **"ברוך הבא + המייל"**
+  * אנימציית טעינה
+  * לאחר ~2 שניות מתבצעת הפניה אוטומטית ל־`redirect`
 
 ---
 
-## 📝 Notes
+## 📌 הערות
 
-* The `id_token` is a **JWT** signed by Google.
-  Always verify it on the backend before granting full access.
-* The login page itself does **not** store anything. It just returns `email` + `id_token`.
-* Universal: Any site can use it by specifying `return_to` parameter.
-
----
-
-## 🔄 Example Flow
-
-1. User clicks "Login with Google" on your website.
-2. Redirected to GitHub Pages login.
-3. Signs in → sees welcome screen.
-4. Redirected back to your site with email + id_token.
-
-```
-YourSite → GitHub Pages (login.html) → Back to YourSite
-```
-
-````
-
----
-
-### 📄 config.json (אופציונלי, אם תרצה לשמור Client ID בנפרד)
-```json
-{
-  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com"
-}
-````
-
-ואז בקובץ `login.html` תוכל לטעון אותו עם:
-
-```js
-fetch("config.json")
-  .then(r => r.json())
-  .then(cfg => {
-    document.getElementById("g_id_onload").setAttribute("data-client_id", cfg.client_id);
-  });
-```
-
----
-?
+* ה־`token` שמוחזר הוא **ID Token JWT** של Google.
+  ניתן לאמת אותו בשרת בעזרת קריאה ל־`https://oauth2.googleapis.com/tokeninfo?id_token=...`.
+* לשימוש מאובטח – עדיף לאמת את ה־token בצד שרת ולא להסתמך רק על הפרמטרים מהדפדפן.
